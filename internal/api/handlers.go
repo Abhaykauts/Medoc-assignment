@@ -1,0 +1,75 @@
+package api
+
+import (
+	"encoding/json"
+	"medoc-assignment/internal/core"
+	"net/http"
+)
+
+type Handler struct {
+	Engine core.AllocationEngine
+}
+
+func NewHandler(engine core.AllocationEngine) *Handler {
+	return &Handler{Engine: engine}
+}
+
+// BookRequest represents the payload for booking a token.
+type BookRequest struct {
+	DoctorID    string           `json:"doctor_id"`
+	SlotID      string           `json:"slot_id"`
+	PatientName string           `json:"patient_name"`
+	PatientType core.PatientType `json:"patient_type"`
+}
+
+func (h *Handler) BookToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req BookRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	token, err := h.Engine.BookToken(req.DoctorID, req.SlotID, req.PatientName, req.PatientType)
+	if err != nil {
+		switch err {
+		case core.ErrSlotFull:
+			http.Error(w, err.Error(), http.StatusConflict) // 409 Conflict
+		case core.ErrDoctorNotFound, core.ErrSlotNotFound:
+			http.Error(w, err.Error(), http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(token)
+}
+
+// GetScheduleHandler returns the schedule for a doctor.
+func (h *Handler) GetSchedule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	doctorID := r.URL.Query().Get("doctor_id")
+	if doctorID == "" {
+		http.Error(w, "doctor_id is required", http.StatusBadRequest)
+		return
+	}
+
+	doc, err := h.Engine.GetDoctorSchedule(doctorID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(doc)
+}

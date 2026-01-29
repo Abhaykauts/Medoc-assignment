@@ -79,9 +79,7 @@ func (e *InMemoryEngine) BookToken(doctorID, slotID, patientName string, pType c
 
 	// 2. Slot Full - Attempt Preemption
 	// Find the token with the lowest priority in the slot.
-	// If multiple have the same lowest priority, prefer the one added latest (LIFO for bumping?) or earliest?
-	// Usually, we bump the one with lowest priority. If equal, bump the one added latest (LIFO) or keep FIFO?
-	// Requirement: "user has higher priority than lowest priority token in slot"
+	// If multiple have the same lowest priority, prefer the one added latest (LIFO)
 
 	tokens := targetSlot.Tokens()
 	lowestPriority := 1000 // Start high
@@ -93,8 +91,7 @@ func (e *InMemoryEngine) BookToken(doctorID, slotID, patientName string, pType c
 			lowestPriority = p
 			replaceCandidate = t
 		} else if p == lowestPriority {
-			// Tie-breaking: Bump the one that was created last? Or first?
-			// Let's bump the one created most recently (LIFO) to respect early bookings?
+			// Tie-breaking: Bump the one that was created last
 			if t.Timestamp.After(replaceCandidate.Timestamp) {
 				replaceCandidate = t
 			}
