@@ -119,9 +119,15 @@ func (e *InMemoryEngine) BookToken(doctorID, slotID, patientName string, pType c
 		return newToken, nil
 	}
 
-	// Option: Add failed booking to waitlist?
-	// For now, we return ErrSlotFull as per original design, but in a real app we might just waitlist them.
-	return nil, core.ErrSlotFull
+	// 3. Fallback: Add New Token to Waitlist
+	fmt.Printf("Slot full. Adding token %s (%s) to waitlist for slot %s\n", newToken.ID, newToken.Type, slotID)
+	newToken.Status = "WAITING"
+	e.addToWaitlist(slotID, newToken)
+	// Note: We do NOT add to tokenMap because currently tokenMap tracks ACTIVE slot tokens.
+	// If we want to support cancelling waitlisted tokens, we would need to track them too.
+	// For now, adhering to the current pattern.
+
+	return newToken, nil
 }
 
 func (e *InMemoryEngine) CancelToken(tokenID string) error {
