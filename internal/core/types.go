@@ -4,17 +4,17 @@ import (
 	"time"
 )
 
-// PatientType represents the priority of the patient.
+// PatientType defines patient priority.
 type PatientType string
 
 const (
 	Emergency     PatientType = "EMERGENCY"
 	PaidPriority  PatientType = "PAID_PRIORITY"
 	FollowUp      PatientType = "FOLLOW_UP"
-	OnlineBooking PatientType = "ONLINE_BOOKING" // Also Walk-in
+	OnlineBooking PatientType = "ONLINE_BOOKING" // Includes Walk-in
 )
 
-// Priority returns an integer representation of the patient type (higher is better).
+// Priority returns the integer priority (higher = more important).
 func (pt PatientType) Priority() int {
 	switch pt {
 	case Emergency:
@@ -30,28 +30,27 @@ func (pt PatientType) Priority() int {
 	}
 }
 
-// Token represents an allocated appointment.
+// Token represents an allocated or waiting appointment.
 type Token struct {
 	ID          string      `json:"id"`
 	PatientName string      `json:"patient_name"`
 	Type        PatientType `json:"type"`
-	Timestamp   time.Time   `json:"timestamp"` // Creation time
+	Timestamp   time.Time   `json:"timestamp"`
 	SlotID      string      `json:"slot_id"`
 	DoctorID    string      `json:"doctor_id"`
-	Status      string      `json:"status"` // BOOKED, CANCELLED, COMPLETED
+	Status      string      `json:"status"` // BOOKED, CANCELLED, WAITING, BUMPED
 }
 
-// Slot represents a fixed time window for a doctor.
+// Slot represents a discrete time window with fixed capacity.
 type Slot struct {
 	ID        string    `json:"id"`
 	DoctorID  string    `json:"doctor_id"`
 	StartTime time.Time `json:"start_time"`
 	EndTime   time.Time `json:"end_time"`
 	Capacity  int       `json:"capacity"`
-	tokens    []*Token  // Private to ensure encapsulation via methods if needed
+	tokens    []*Token
 }
 
-// NewSlot creates a new slot.
 func NewSlot(id, doctorID string, start, end time.Time, capacity int) *Slot {
 	return &Slot{
 		ID:        id,
@@ -63,21 +62,17 @@ func NewSlot(id, doctorID string, start, end time.Time, capacity int) *Slot {
 	}
 }
 
-// Tokens returns a copy of tokens allocated to this slot.
+// Tokens returns a safe copy of the slot's tokens.
 func (s *Slot) Tokens() []*Token {
-	// Return copy to prevent external mutation issues
 	result := make([]*Token, len(s.tokens))
 	copy(result, s.tokens)
 	return result
 }
 
-// AddToken adds a token to the slot. Return error if full? 
-// The AllocationEngine will handle logic, this just holds data.
 func (s *Slot) AddToken(t *Token) {
 	s.tokens = append(s.tokens, t)
 }
 
-// RemoveToken removes a token by ID.
 func (s *Slot) RemoveToken(tokenID string) *Token {
 	for i, t := range s.tokens {
 		if t.ID == tokenID {
@@ -88,12 +83,11 @@ func (s *Slot) RemoveToken(tokenID string) *Token {
 	return nil
 }
 
-// CurrentCount returns current number of tokens.
 func (s *Slot) CurrentCount() int {
 	return len(s.tokens)
 }
 
-// Doctor represents a medical professional.
+// Doctor represents a medical professional and their schedule.
 type Doctor struct {
 	ID    string  `json:"id"`
 	Name  string  `json:"name"`

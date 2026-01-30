@@ -14,7 +14,7 @@ func NewHandler(engine core.AllocationEngine) *Handler {
 	return &Handler{Engine: engine}
 }
 
-// BookRequest represents the payload for booking a token.
+// BookRequest payload.
 type BookRequest struct {
 	DoctorID    string           `json:"doctor_id"`
 	SlotID      string           `json:"slot_id"`
@@ -38,7 +38,7 @@ func (h *Handler) BookToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case core.ErrSlotFull:
-			http.Error(w, err.Error(), http.StatusConflict) // 409 Conflict
+			http.Error(w, err.Error(), http.StatusConflict)
 		case core.ErrDoctorNotFound, core.ErrSlotNotFound:
 			http.Error(w, err.Error(), http.StatusNotFound)
 		default:
@@ -51,7 +51,7 @@ func (h *Handler) BookToken(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(token)
 }
 
-// GetScheduleHandler returns the schedule for a doctor.
+// GetScheduleHandler returns the current schedule.
 func (h *Handler) GetSchedule(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

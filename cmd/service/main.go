@@ -11,13 +11,13 @@ import (
 )
 
 func main() {
-	// 1. Initialize Engine
+	// Initialize Engine
 	engine := algo.NewInMemoryEngine()
 
-	// 2. Setup Default Doctors (Simulation Data)
+	// Setup Simulation Data
 	initDoctors(engine)
 
-	// 3. Setup API Handlers
+	// Setup API
 	handler := api.NewHandler(engine)
 
 	http.HandleFunc("/book", handler.BookToken)
@@ -31,7 +31,7 @@ func main() {
 }
 
 func initDoctors(engine core.AllocationEngine) {
-	// Create 3 doctors with slots 9-10, 10-11, 11-12
+	// 3 doctors with slots: 9-10 (Cap: 3), 10-11 (Cap: 3)
 	doctors := []struct {
 		ID   string
 		Name string
@@ -47,8 +47,8 @@ func initDoctors(engine core.AllocationEngine) {
 
 	for _, d := range doctors {
 		slots := []*core.Slot{
-			core.NewSlot(d.ID+"_slot1", d.ID, baseTime, baseTime.Add(1*time.Hour), 3),                  // 9-10, Cap: 3
-			core.NewSlot(d.ID+"_slot2", d.ID, baseTime.Add(1*time.Hour), baseTime.Add(2*time.Hour), 3), // 10-11, Cap: 3
+			core.NewSlot(d.ID+"_slot1", d.ID, baseTime, baseTime.Add(1*time.Hour), 3),
+			core.NewSlot(d.ID+"_slot2", d.ID, baseTime.Add(1*time.Hour), baseTime.Add(2*time.Hour), 3),
 		}
 
 		doc := &core.Doctor{
