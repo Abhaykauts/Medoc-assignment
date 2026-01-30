@@ -1,61 +1,86 @@
-# OPD Token Allocation Engine
+# 🏥 OPD Token Allocation Engine
 
-A backend system for managing hospital OPD token allocation with elastic capacity, priority preemption, and waitlist management.
+A high-performance, concurrent backend system for managing hospital OPD bookings. It supports **Hard Capacity Limits**, **Elastic Priority Management**, and **Dynamic Waitlist Reallocation**.
 
-## Features
-- **Hard Capacity Limits**: Enforces slot capacity checking.
-- **Priority-Based Allocation**: Emergency > Paid Priority > Follow-up > Online Booking.
-- **Preemption**: High-priority patients can bump lower-priority patients from full slots.
-- **Waitlist Managment**:
-    - **Waitlist Fallback**: Failed bookings (Slot Full) are automatically waitlisted.
-    - **Waitlist Promotion**: Cancellations automatically promote the highest priority waitlisted patient.
-    - **Waitlist Re-Queueing**: Bumped patients are moved to the top of the waitlist.
-- **Simulation**: Includes a script to stress-test the logic with concurrent requests.
+Built with **Go (Golang)**.
 
-## Setup & Run
+---
 
-### 1. Requirements
-- Go 1.18+
+## ✨ Key Features
 
-### 2. Start the Server
+### 1. Priority & Preemption
+The system assigns prioritization based on `PatientType`. If a slot is full, a higher-priority patient can **"bump"** (preempt) a lower-priority patient to the waitlist.
+*   🚑 **Emergency** (Priority 100): Can bump anyone.
+*   💎 **Paid Priority** (Priority 80): Can bump Follow-up/Standard.
+*   🔄 **Follow-up** (Priority 60): Can bump Standard.
+*   👤 **Online Booking** (Priority 40): Standard ticket.
+
+### 2. Smart Waitlist Management
+*   **Automatic Fallback**: If a slot is full and preemption isn't possible, the user is added to a valid **Waitlist** (Status: `WAITING`).
+*   **Auto-Promotion**: When a slot opens (Cancellation/No-Show), the **highest-priority** person on the waitlist is automatically promoted to `BOOKED`.
+*   **Fairness**:
+    *   **Bumping**: LIFO (Last-In-First-Out) - The person who booked *most recently* is bumped to protect early bookers.
+    *   **Promotion**: FIFO (First-In-First-Out) - The person who has been waiting longest gets the seat.
+
+### 3. High Performance
+*   **O(1) Lookups**: Uses an internal `TokenMap` to find and cancel tokens instantly without scanning slots.
+*   **Thread Safety**: Fully thread-safe using `sync.RWMutex` to handle thousands of concurrent requests.
+
+---
+
+## 📂 Project Structure
+
+```text
+/medoc-assignment
+├── cmd/service/           # Application Entry Point
+│   └── main.go            # Server initialization
+├── internal/
+│   ├── algo/              # Core Logic (The "Brain")
+│   ├── api/               # HTTP Handlers (The "Face")
+│   └── core/              # Domain Models (Types & Interfaces)
+├── simulation/            # Stress Testing Script
+│   └── sim.go             # Simulates 3 doctors + concurrent load
+├── API.md                 # Detailed API Documentation
+└── DESIGN.md              # Architectural decisions
+```
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+*   Go 1.18 or higher.
+
+### 1. Start the Server
 ```bash
 go run cmd/service/main.go
 ```
-Server starts on `http://localhost:8080`.
+*Server starts on port `8080`.*
 
-### 3. Run the Simulation
-In a separate terminal:
+### 2. Run the Stress Test (Simulation)
+Open a new terminal and run the automated simulation. It creates 3 doctors and fires 20+ concurrent events to test locking and preemption.
 ```bash
 go run simulation/sim.go
 ```
-This script simulates:
-1.  **Concurrency**: Fires 10 requests at once.
-2.  **Preemption**: Sends Emergency/VIP patients to a full slot to verify bumping.
-3.  **Waitlist**: Verifies that overflow requests are queued (HTTP 201 Created).
 
-## API Endpoints
+### 3. Manual Testing
+See [DEMO_COMMANDS.md](DEMO_COMMANDS.md) for copy-pasteable `curl` commands.
 
-### 1. Book a Token
-**POST** `/book`
+---
 
-```json
-{
-  "doctor_id": "doc1",
-  "slot_id": "doc1_slot1",
-  "patient_name": "John Doe",
-  "patient_type": "ONLINE_BOOKING" 
-}
-```
-*   `patient_type` options: `EMERGENCY`, `PAID_PRIORITY`, `FOLLOW_UP`, `ONLINE_BOOKING`.
+## 🔌 API Summary
+*See [API.md](API.md) for full schema details.*
 
-### 2. Get Schedule
-**GET** `/schedule?doctor_id=doc1`
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/book` | Book a token. Handles Waitlisting/Preemption automatically. |
+| `POST` | `/cancel` | Cancel a token. Triggers auto-promotion from waitlist. |
+| `GET` | `/schedule` | View doctor's slots and current capacity. |
 
-Returns the doctor's current state, including booked capacity.
+---
 
-### 3. Cancel Token
-**POST** `/cancel` (Internal Logic Implemented)
-*   Promotes the next best waitlisted candidate automatically.
-
-## Design Decisions
-See [DESIGN.md](DESIGN.md) for details on the architecture, trade-offs (Eager vs Lazy reallocation), and algorithms.
+## 🧠 Design Decisions
+Please refer to **[DESIGN.md](DESIGN.md)** for a deep dive into:
+*   Why we chose **Eager Reallocation**.
+*   In-Memory vs Database trade-offs.
+*   Edge cases handled (No-shows, Delays).
