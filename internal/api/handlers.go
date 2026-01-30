@@ -73,3 +73,40 @@ func (h *Handler) GetSchedule(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(doc)
 }
+
+// CancelRequest payload.
+type CancelRequest struct {
+	TokenID string `json:"token_id"`
+}
+
+// CancelTokenHandler cancels a token.
+func (h *Handler) CancelToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CancelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.TokenID == "" {
+		http.Error(w, "token_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Engine.CancelToken(req.TokenID); err != nil {
+		switch err {
+		case core.ErrTokenNotFound:
+			http.Error(w, err.Error(), http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"CANCELLED"}`))
+}

@@ -81,3 +81,32 @@ Returns the allocated token. Check status to see if Booked or Waitlisted.
 **Error Responses**:
 *   `400 Bad Request`: Missing `doctor_id`.
 *   `404 Not Found`: Doctor ID does not exist.
+
+---
+
+## 3. Cancel a Token
+**Endpoint**: `POST /cancel`  
+**Description**: Cancels an existing token. Logic will automatically promote the highest priority waitlisted patient to the freed slot.
+
+### Request Body
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `token_id` | string | Yes | The ID of the token to cancel (returned from `/book`). |
+
+**Example Request**:
+```json
+{
+  "token_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+### Response
+**Success (200 OK)**
+```json
+{
+  "status": "CANCELLED"
+}
+```
+
+**Error Responses**:
+*   `404 Not Found`: Token ID does not exist or is already cancelled.

@@ -19,8 +19,7 @@ type BookRequest struct {
 }
 
 func main() {
-	// Ensure server is running (User must run `go run cmd/service/main.go` separately or we assume it's up)
-	// For this script, we'll assume the server is at localhost:8080
+	// Ensure server is running (User must run `go run cmd/service/main.go` 
 	baseURL := "http://localhost:8080"
 
 	fmt.Println("Starting Simulation... (Ensure server is running on :8080)")

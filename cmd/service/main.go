@@ -21,6 +21,7 @@ func main() {
 	handler := api.NewHandler(engine)
 
 	http.HandleFunc("/book", handler.BookToken)
+	http.HandleFunc("/cancel", handler.CancelToken)
 	http.HandleFunc("/schedule", handler.GetSchedule)
 
 	port := ":8080"
