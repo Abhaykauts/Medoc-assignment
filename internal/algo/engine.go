@@ -11,14 +11,18 @@ import (
 
 // InMemoryEngine implements core.AllocationEngine.
 type InMemoryEngine struct {
-	doctors map[string]*core.Doctor
-	mu      sync.RWMutex
+	doctors  map[string]*core.Doctor
+	tokenMap map[string]*core.Slot    // Optimization: TokenID -> Slot (Active bookings only)
+	waitlist map[string][]*core.Token // SlotID -> List of waiting tokens
+	mu       sync.RWMutex
 }
 
 // NewInMemoryEngine creates a new engine instance.
 func NewInMemoryEngine() *InMemoryEngine {
 	return &InMemoryEngine{
-		doctors: make(map[string]*core.Doctor),
+		doctors:  make(map[string]*core.Doctor),
+		tokenMap: make(map[string]*core.Slot),
+		waitlist: make(map[string][]*core.Token),
 	}
 }
 
@@ -74,13 +78,11 @@ func (e *InMemoryEngine) BookToken(doctorID, slotID, patientName string, pType c
 	if targetSlot.CurrentCount() < targetSlot.Capacity {
 		// Space available
 		targetSlot.AddToken(newToken)
+		e.tokenMap[newToken.ID] = targetSlot
 		return newToken, nil
 	}
 
 	// 2. Slot Full - Attempt Preemption
-	// Find the token with the lowest priority in the slot.
-	// If multiple have the same lowest priority, prefer the one added latest (LIFO)
-
 	tokens := targetSlot.Tokens()
 	lowestPriority := 1000 // Start high
 	var replaceCandidate *core.Token
@@ -91,7 +93,7 @@ func (e *InMemoryEngine) BookToken(doctorID, slotID, patientName string, pType c
 			lowestPriority = p
 			replaceCandidate = t
 		} else if p == lowestPriority {
-			// Tie-breaking: Bump the one that was created last
+			// Tie-breaking: Bump the one that was created last (LIFO)
 			if t.Timestamp.After(replaceCandidate.Timestamp) {
 				replaceCandidate = t
 			}
@@ -103,16 +105,22 @@ func (e *InMemoryEngine) BookToken(doctorID, slotID, patientName string, pType c
 		// PREEMPT: Remove candidate, add new token
 		fmt.Printf("Preempting token %s (%s) for new token %s (%s)\n", replaceCandidate.ID, replaceCandidate.Type, newToken.ID, newToken.Type)
 
-		// Set status of bumped token
-		replaceCandidate.Status = "BUMPED"
-		// In a real system, we'd add to waitlist here.
-
+		// 1. Update Candidate: Move to Waitlist
+		replaceCandidate.Status = "WAITING"
 		targetSlot.RemoveToken(replaceCandidate.ID)
+		delete(e.tokenMap, replaceCandidate.ID) // Remove from active map
+
+		e.addToWaitlist(slotID, replaceCandidate)
+
+		// 2. Add New Token
 		targetSlot.AddToken(newToken)
+		e.tokenMap[newToken.ID] = targetSlot
 
 		return newToken, nil
 	}
 
+	// Option: Add failed booking to waitlist?
+	// For now, we return ErrSlotFull as per original design, but in a real app we might just waitlist them.
 	return nil, core.ErrSlotFull
 }
 
@@ -120,18 +128,74 @@ func (e *InMemoryEngine) CancelToken(tokenID string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Naive search for token across all doctors/slots
-	// Optimized: Maintain a map[tokenID]*Slot
+	// Optimized: Use map lookup
+	slot, ok := e.tokenMap[tokenID]
+	if !ok {
+		return core.ErrTokenNotFound
+	}
 
-	for _, doc := range e.doctors {
-		for _, slot := range doc.Slots {
-			if t := slot.RemoveToken(tokenID); t != nil {
-				t.Status = "CANCELLED"
-				// Here we would check WaitList to fill the gap
-				return nil
+	// Remove from slot
+	t := slot.RemoveToken(tokenID)
+	if t != nil {
+		t.Status = "CANCELLED"
+		delete(e.tokenMap, tokenID)
+
+		// Trigger Reallocation (Fill the gap)
+		e.promoteFromWaitlist(slot)
+		return nil
+	}
+
+	return core.ErrTokenNotFound
+}
+
+// Helpers
+
+func (e *InMemoryEngine) addToWaitlist(slotID string, t *core.Token) {
+	if _, ok := e.waitlist[slotID]; !ok {
+		e.waitlist[slotID] = []*core.Token{}
+	}
+	e.waitlist[slotID] = append(e.waitlist[slotID], t)
+}
+
+func (e *InMemoryEngine) promoteFromWaitlist(slot *core.Slot) {
+	list, ok := e.waitlist[slot.ID]
+	if !ok || len(list) == 0 {
+		return
+	}
+
+	// Find highest priority in waitlist
+	highestP := -1
+	candidateIdx := -1
+
+	for i, t := range list {
+		p := t.Type.Priority()
+		if p > highestP {
+			highestP = p
+			candidateIdx = i
+		} else if p == highestP {
+			// FIFO for waitlist promotion (First come first served among equals)
+			// The list is unordered by time, so we should strictly check timestamp if we want strict FIFO
+			// But simple index check might suffice if we assumeappend order.
+			// Let's explicitly check timestamp for fairness.
+			if t.Timestamp.Before(list[candidateIdx].Timestamp) {
+				candidateIdx = i
 			}
 		}
 	}
 
-	return core.ErrTokenNotFound
+	if candidateIdx != -1 {
+		winner := list[candidateIdx]
+
+		// Remove from waitlist
+		// Fast remove: swap with last and truncate (order doesn't matter since we scan)
+		list[candidateIdx] = list[len(list)-1]
+		e.waitlist[slot.ID] = list[:len(list)-1]
+
+		// Add to Slot
+		winner.Status = "BOOKED"
+		slot.AddToken(winner)
+		e.tokenMap[winner.ID] = slot
+
+		fmt.Printf("Promoted token %s (%s) from waitlist to slot %s\n", winner.ID, winner.Type, slot.ID)
+	}
 }
